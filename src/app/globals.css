@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@500;600;700;800&display=swap');
+
+:root {
+  --font-inter: 'Inter', system-ui, sans-serif;
+  --font-montserrat: 'Montserrat', system-ui, sans-serif;
+  --brand-teal: #01969a;
+  --brand-teal-dark: #015f62;
+  --brand-gold: #D4A017;
+  --brand-white: #ffffff;
+  --brand-offwhite: #f8fafa;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-family: var(--font-inter);
+  background-color: var(--brand-offwhite);
+  color: #1a1a1a;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #f1f1f1; }
+::-webkit-scrollbar-thumb { background: var(--brand-teal); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--brand-teal-dark); }
+
+/* Focus */
+:focus-visible {
+  outline: 2px solid var(--brand-teal);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-brand-teal text-white font-semibold px-6 py-3 rounded-xl 
+           hover:bg-teal-600 active:bg-teal-700 transition-all duration-200 
+           shadow-card hover:shadow-panel text-sm tracking-wide;
+  }
+  .btn-secondary {
+    @apply border-2 border-brand-teal text-brand-teal font-semibold px-6 py-3 
+           rounded-xl hover:bg-brand-light active:bg-teal-100 transition-all 
+           duration-200 text-sm tracking-wide;
+  }
+  .btn-gold {
+    @apply bg-brand-gold text-white font-semibold px-6 py-3 rounded-xl 
+           hover:bg-gold-600 active:bg-gold-700 transition-all duration-200 
+           shadow-gold text-sm tracking-wide;
+  }
+  .card {
+    @apply bg-white rounded-2xl shadow-card border border-teal-50 p-6;
+  }
+  .section-heading {
+    @apply font-display font-bold text-teal-800 tracking-tight;
+  }
+  .input-field {
+    @apply w-full border border-gray-200 rounded-xl px-4 py-3 text-sm 
+           focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent 
+           transition-all duration-200 bg-white placeholder:text-gray-400;
+  }
+  .label {
+    @apply block text-sm font-medium text-gray-700 mb-1.5;
+  }
+  .badge-pending  { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800; }
+  .badge-approved { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800; }
+  .badge-declined { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800; }
+  .badge-completed{ @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800; }
+}
+/* Fix browser autofill dark background */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px white inset !important;
+  -webkit-text-fill-color: #1a1a1a !important;
+  background-color: white !important;
+  caret-color: #1a1a1a !important;
+}
+
+input, textarea, select {
+  background-color: white !important;
+  color: #1a1a1a !important;
+}
