@@ -1,9 +1,9 @@
 "use server";
 
 import { createClient } from "@supabase/supabase-js";
-import { sendNewBookingAlert } from "@/lib/email";
+import { sendBookingReceivedEmail, sendNewBookingAlert } from "@/lib/email";
 
-export async function submitAppointment(data: {
+type SubmitAppointmentInput = {
   firstName: string;
   middleName?: string;
   lastName: string;
@@ -21,70 +21,143 @@ export async function submitAppointment(data: {
   requestedTime?: string;
   specialInstructions?: string;
   paymentStatus?: string;
-}) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  const db = createClient(url, key);
+};
+
+function getAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL environment variable.");
+  }
+
+  if (!serviceRoleKey) {
+    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY environment variable.");
+  }
+
+  return createClient(url, serviceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+}
+
+export async function submitAppointment(data: SubmitAppointmentInput) {
+  const db = getAdminClient();
+
+  const cleaned = {
+    firstName: data.firstName.trim(),
+    middleName: data.middleName?.trim() || "",
+    lastName: data.lastName.trim(),
+    dateOfBirth: data.dateOfBirth.trim(),
+    gender: data.gender.trim(),
+    phoneHome: data.phoneHome?.trim() || "",
+    phoneMobile: data.phoneMobile.trim(),
+    email: data.email.trim().toLowerCase(),
+    address: data.address.trim(),
+    nationalInsurance: data.nationalInsurance?.trim() || "",
+    maritalStatus: data.maritalStatus?.trim() || "",
+    occupation: data.occupation?.trim() || "",
+    service: data.service.trim(),
+    requestedDate: data.requestedDate.trim(),
+    requestedTime: data.requestedTime?.trim() || "",
+    specialInstructions: data.specialInstructions?.trim() || "",
+    paymentStatus: data.paymentStatus?.trim() || "Unpaid",
+  };
+
+  if (!cleaned.firstName) throw new Error("First name is required.");
+  if (!cleaned.lastName) throw new Error("Last name is required.");
+  if (!cleaned.dateOfBirth) throw new Error("Date of birth is required.");
+  if (!cleaned.gender) throw new Error("Gender is required.");
+  if (!cleaned.phoneMobile) throw new Error("Mobile phone is required.");
+  if (!cleaned.email) throw new Error("Email is required.");
+  if (!cleaned.address) throw new Error("Address is required.");
+  if (!cleaned.service) throw new Error("Service is required.");
+  if (!cleaned.requestedDate) throw new Error("Requested date is required.");
 
   const { data: patient, error: patientError } = await db
     .from("patients")
     .insert({
-      first_name: data.firstName,
-      middle_name: data.middleName || null,
-      last_name: data.lastName,
-      date_of_birth: data.dateOfBirth,
-      gender: data.gender,
-      phone_home: data.phoneHome || null,
-      phone_mobile: data.phoneMobile,
-      email: data.email,
-      address: data.address,
-      national_insurance: data.nationalInsurance || null,
-      marital_status: data.maritalStatus || null,
-      occupation: data.occupation || null,
+      first_name: cleaned.firstName,
+      middle_name: cleaned.middleName || null,
+      last_name: cleaned.lastName,
+      date_of_birth: cleaned.dateOfBirth,
+      gender: cleaned.gender,
+      phone_home: cleaned.phoneHome || null,
+      phone_mobile: cleaned.phoneMobile,
+      email: cleaned.email,
+      address: cleaned.address,
+      national_insurance: cleaned.nationalInsurance || null,
+      marital_status: cleaned.maritalStatus || null,
+      occupation: cleaned.occupation || null,
     })
     .select()
     .single();
 
-  if (patientError) throw new Error(patientError.message);
+  if (patientError || !patient) {
+    throw new Error(patientError?.message || "Failed to create patient record.");
+  }
 
   const { data: appointment, error: apptError } = await db
     .from("appointments")
     .insert({
       patient_id: patient.id,
-      service: data.service,
-      requested_date: data.requestedDate,
-      requested_time: data.requestedTime || null,
-      special_instructions: data.specialInstructions || null,
+      service: cleaned.service,
+      requested_date: cleaned.requestedDate,
+      requested_time: cleaned.requestedTime || null,
+      special_instructions: cleaned.specialInstructions || null,
       status: "Pending",
-      payment_status: data.paymentStatus || "Unpaid",
+      payment_status: cleaned.paymentStatus,
     })
     .select()
     .single();
 
-  if (apptError) throw new Error(apptError.message);
+  if (apptError || !appointment) {
+    throw new Error(apptError?.message || "Failed to create appointment.");
+  }
 
-  // Send admin notification email
   try {
     await sendNewBookingAlert({
-      patientName: `${data.firstName} ${data.lastName}`,
-      service: data.service,
-      date: data.requestedDate,
-      time: data.requestedTime,
-      phone: data.phoneMobile,
-      email: data.email,
-      address: data.address,
+      patientName: `${cleaned.firstName} ${cleaned.lastName}`,
+      service: cleaned.service,
+      date: cleaned.requestedDate,
+      time: cleaned.requestedTime || undefined,
+      phone: cleaned.phoneMobile,
+      email: cleaned.email,
+      address: cleaned.address,
       appointmentId: appointment.id,
     });
   } catch (emailErr) {
-    console.error("Email send failed:", emailErr);
-    // Don't block the booking if email fails
+    console.error("Admin email send failed:", emailErr);
   }
 
-  await db.from("audit_logs").insert({
-    user_email: data.email,
+  try {
+    await sendBookingReceivedEmail({
+      patientName: `${cleaned.firstName} ${cleaned.lastName}`,
+      patientEmail: cleaned.email,
+      service: cleaned.service,
+      date: cleaned.requestedDate,
+      time: cleaned.requestedTime || undefined,
+      address: cleaned.address,
+      appointmentId: appointment.id,
+    });
+  } catch (emailErr) {
+    console.error("Patient confirmation email failed:", emailErr);
+  }
+
+  const { error: auditError } = await db.from("audit_logs").insert({
+    user_email: cleaned.email,
     action: "Appointment Submitted",
-    details: `${data.firstName} ${data.lastName} requested ${data.service} on ${data.requestedDate}`,
+    details: `${cleaned.firstName} ${cleaned.lastName} requested ${cleaned.service} on ${cleaned.requestedDate}${cleaned.requestedTime ? ` at ${cleaned.requestedTime}` : ""} (Appointment ID: ${appointment.id})`,
   });
 
-  return { success: true, appointmentId: appointment.id };
+  if (auditError) {
+    console.error("Audit log failed:", auditError);
+  }
+
+  return {
+    success: true,
+    appointmentId: appointment.id,
+  };
 }

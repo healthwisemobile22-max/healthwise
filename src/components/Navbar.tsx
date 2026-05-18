@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 
 const navLinks = [
@@ -17,23 +18,34 @@ export default function Navbar() {
 
   return (
     <nav className="sticky top-0 z-50 bg-white border-b border-teal-100 shadow-sm">
-      <div className="bg-teal-600 text-white text-xs py-1.5 px-4 flex justify-center items-center gap-2">
-        <span>📞 242.807.WISE (9473)</span>
-        <span className="mx-2 opacity-40">|</span>
-        <span>info.healthwisephlebotomy@gmail.com</span>
-        <span className="mx-2 opacity-40">|</span>
-        <span>Nassau, Bahamas</span>
+      <div className="bg-teal-600 text-white text-xs py-1.5 px-4">
+        <div className="max-w-6xl mx-auto flex flex-wrap justify-center items-center gap-2 text-center">
+          <span>📞 242.807.WISE (9473)</span>
+          <span className="mx-2 opacity-40 hidden sm:inline">|</span>
+          <span>info.healthwisephlebotomy@gmail.com</span>
+          <span className="mx-2 opacity-40 hidden md:inline">|</span>
+          <span className="hidden md:inline">Nassau, Bahamas</span>
+        </div>
       </div>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between h-20 md:h-24">
+          <Link href="/" className="flex items-center gap-4 min-w-0">
+            <div className="relative w-[72px] h-[72px] sm:w-[90px] sm:h-[90px] shrink-0 translate-y-[8px]">
+              <Image
+                src="/logo.png"
+                alt="Health Wise logo"
+                fill
+                className="object-contain"
+                priority
+              />
+            </div>
 
-          <Link href="/" className="flex items-center gap-3">
-            <div className="flex flex-col leading-none">
-              <span className="font-bold text-xl text-teal-600 tracking-wide">
+            <div className="flex flex-col justify-center leading-none min-w-0">
+              <span className="font-bold text-xl sm:text-2xl text-teal-600 tracking-wide truncate">
                 HEALTH WISE
               </span>
-              <span className="text-[9px] font-semibold text-yellow-600 tracking-[0.15em] uppercase">
+              <span className="mt-1 text-[9px] sm:text-[10px] font-semibold text-yellow-600 tracking-[0.18em] uppercase truncate">
                 Mobile Phlebotomy &amp; Lab Services
               </span>
             </div>
@@ -62,6 +74,7 @@ export default function Navbar() {
             >
               Book Appointment
             </Link>
+
             <button
               onClick={() => setIsOpen(!isOpen)}
               className="md:hidden p-2 rounded-lg text-gray-600 hover:text-teal-600 hover:bg-teal-50 transition-all"
@@ -89,6 +102,7 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
+
           <Link
             href="/book"
             onClick={() => setIsOpen(false)}

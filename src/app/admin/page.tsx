@@ -2,9 +2,9 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/client";
 
 type Patient = {
   first_name: string | null;
@@ -31,6 +31,8 @@ type Stats = {
 };
 
 export default function AdminDashboard() {
+  const supabase = useMemo(() => createClient(), []);
+
   const [stats, setStats] = useState<Stats>({
     total: 0,
     pending: 0,
@@ -41,17 +43,24 @@ export default function AdminDashboard() {
   });
   const [recent, setRecent] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     async function load() {
       const today = new Date().toISOString().split("T")[0];
 
-      const { data: appts } = await supabase
+      const { data: appts, error } = await supabase
         .from("appointments")
         .select(
           "id, service, status, requested_date, created_at, patients(first_name, last_name, phone_mobile)"
         )
         .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("DASHBOARD LOAD ERROR:", error);
+        setLoading(false);
+        return;
+      }
 
       if (appts) {
         const typedAppts = appts as unknown as Appointment[];
@@ -72,7 +81,13 @@ export default function AdminDashboard() {
     }
 
     load();
-  }, []);
+  }, [supabase]);
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    await supabase.auth.signOut({ scope: "local" });
+    window.location.href = "/login";
+  };
 
   const statusColor: Record<string, string> = {
     Pending: "bg-yellow-100 text-yellow-700",
@@ -89,6 +104,7 @@ export default function AdminDashboard() {
           <div className="font-bold text-lg">Health Wise Admin</div>
           <div className="text-teal-300 text-xs">Management Dashboard</div>
         </div>
+
         <div className="flex items-center gap-4">
           <Link
             href="/admin/appointments"
@@ -96,6 +112,21 @@ export default function AdminDashboard() {
           >
             Appointments
           </Link>
+
+          <Link
+            href="/admin/patients"
+            className="text-teal-200 hover:text-white text-sm font-medium transition-colors"
+          >
+            Patients
+          </Link>
+
+          <Link
+            href="/admin/files"
+            className="text-teal-200 hover:text-white text-sm font-medium transition-colors"
+          >
+            Files
+          </Link>
+
           <Link
             href="/"
             target="_blank"
@@ -103,6 +134,14 @@ export default function AdminDashboard() {
           >
             View Site ↗
           </Link>
+
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="bg-white/10 hover:bg-white/20 text-white text-sm font-medium px-4 py-2 rounded-xl transition disabled:opacity-60"
+          >
+            {loggingOut ? "Signing out..." : "Logout"}
+          </button>
         </div>
       </nav>
 
@@ -143,7 +182,10 @@ export default function AdminDashboard() {
               { label: "Declined", value: stats.declined, color: "text-red-500", bg: "bg-red-50" },
               { label: "Today", value: stats.todayCount, color: "text-blue-600", bg: "bg-blue-50" },
             ].map((s) => (
-              <div key={s.label} className={`${s.bg} rounded-xl p-5 border border-gray-100 shadow-sm`}>
+              <div
+                key={s.label}
+                className={`${s.bg} rounded-xl p-5 border border-gray-100 shadow-sm`}
+              >
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">
                   {s.label}
                 </p>
@@ -153,21 +195,21 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
           {[
             { label: "All Appointments", href: "/admin/appointments", emoji: "📋" },
+            { label: "Patients", href: "/admin/patients", emoji: "🧑‍⚕️" },
+            { label: "Files", href: "/admin/files", emoji: "📁" },
             { label: "Pending Review", href: "/admin/appointments?status=Pending", emoji: "⏳" },
             {
               label: "Today's Schedule",
               href: `/admin/appointments?date=${new Date().toISOString().split("T")[0]}`,
               emoji: "📅",
             },
-            { label: "Public Site", href: "/", emoji: "🌐" },
           ].map((action) => (
             <Link
               key={action.label}
               href={action.href}
-              target={action.label === "Public Site" ? "_blank" : undefined}
               className="bg-white border border-gray-100 rounded-xl p-5 hover:border-teal-300 hover:shadow-md transition-all text-center group"
             >
               <div className="text-2xl mb-2">{action.emoji}</div>

@@ -7,7 +7,6 @@ export default function Footer() {
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-
           <div>
             <div className="mb-4">
               <div className="font-bold text-2xl tracking-wide text-white">
@@ -37,6 +36,7 @@ export default function Footer() {
                 { href: "/services", label: "Services" },
                 { href: "/book", label: "Book Appointment" },
                 { href: "/consent", label: "Consent Form" },
+                { href: "/policies", label: "Policies" },
                 { href: "/contact", label: "Contact" },
               ].map((link) => (
                 <li key={link.href}>
