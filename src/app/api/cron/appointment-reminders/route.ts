@@ -1,109 +1,147 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { sendAppointmentReminderEmail } from "@/lib/email";
+import { createClient } from "@/lib/supabase/server";
+import { sendAppointmentReminderEmail, sendSameDayReminderEmail } from "@/lib/email";
 
-function getAdminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+export const dynamic = "force-dynamic";
+
+function isAuthorized(request: NextRequest) {
+  const authHeader = request.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (!cronSecret) return true;
+  return authHeader === `Bearer ${cronSecret}`;
 }
 
-function getTomorrowDateString() {
-  const now = new Date();
-  const tomorrow = new Date(now);
-  tomorrow.setDate(now.getDate() + 1);
-
-  const year = tomorrow.getFullYear();
-  const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
-  const day = String(tomorrow.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+function formatDateOnly(date: Date) {
+  return date.toISOString().split("T")[0];
 }
 
-export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  const expectedToken = process.env.CRON_SECRET;
-
-  if (!expectedToken || authHeader !== `Bearer ${expectedToken}`) {
+export async function GET(request: NextRequest) {
+  if (!isAuthorized(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  try {
-    const db = getAdminClient();
-    const targetDate = getTomorrowDateString();
+  const supabase = await createClient();
 
-    const { data: appointments, error } = await db
+  const now = new Date();
+
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const todayString = formatDateOnly(now);
+  const tomorrowString = formatDateOnly(tomorrow);
+
+  const results = {
+    regularReminderCandidates: 0,
+    regularRemindersSent: 0,
+    sameDayReminderCandidates: 0,
+    sameDayRemindersSent: 0,
+    errors: [] as string[],
+  };
+
+  try {
+    const { data: regularAppointments, error: regularError } = await supabase
       .from("appointments")
-      .select("*, patients(*)")
+      .select("id, requested_date, requested_time, reminder_sent_at, status, patients(*)")
       .eq("status", "Approved")
-      .eq("requested_date", targetDate)
+      .eq("requested_date", tomorrowString)
       .is("reminder_sent_at", null);
 
-    if (error) {
-      return NextResponse.json(
-        { ok: false, error: error.message },
-        { status: 500 }
-      );
+    if (regularError) {
+      throw new Error(`Regular reminder query failed: ${regularError.message}`);
     }
 
-    const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+    results.regularReminderCandidates = regularAppointments?.length || 0;
 
-    for (const appt of appointments || []) {
-      const patient = Array.isArray(appt.patients) ? appt.patients[0] : appt.patients;
-
-      if (!patient?.email) {
-        results.push({
-          id: appt.id,
-          ok: false,
-          error: "Missing patient email",
-        });
-        continue;
-      }
-
+    for (const appt of regularAppointments || []) {
       try {
-        const patientName =
-          `${patient.first_name || ""} ${patient.last_name || ""}`.trim() || "Patient";
+        const patient = appt.patients;
+
+        if (!patient?.email) {
+          results.errors.push(`Skipped regular reminder for ${appt.id}: missing patient email`);
+          continue;
+        }
 
         await sendAppointmentReminderEmail({
-          patientName,
-          patientEmail: patient.email,
-          service: appt.service,
-          date: appt.requested_date,
-          time: appt.requested_time || undefined,
-          address: patient.address || "",
+          to: patient.email,
+          firstName: patient.first_name || "Patient",
+          appointmentDate: appt.requested_date || "",
+          appointmentTime: appt.requested_time || "",
         });
 
-        await db
+        const { error: updateError } = await supabase
           .from("appointments")
           .update({ reminder_sent_at: new Date().toISOString() })
           .eq("id", appt.id);
 
-        await db.from("audit_logs").insert({
-          user_email: patient.email,
-          action: "Appointment Reminder Sent",
-          details: `${patientName} - ${appt.service} on ${appt.requested_date}${appt.requested_time ? ` at ${appt.requested_time}` : ""}`,
+        if (updateError) {
+          results.errors.push(`Reminder sent but DB update failed for ${appt.id}: ${updateError.message}`);
+          continue;
+        }
+
+        results.regularRemindersSent += 1;
+      } catch (err: any) {
+        results.errors.push(`Regular reminder failed for ${appt.id}: ${err.message || "Unknown error"}`);
+      }
+    }
+
+    const { data: sameDayAppointments, error: sameDayError } = await supabase
+      .from("appointments")
+      .select("id, requested_date, requested_time, same_day_reminder_sent_at, status, patients(*)")
+      .eq("status", "Approved")
+      .eq("requested_date", todayString)
+      .is("same_day_reminder_sent_at", null);
+
+    if (sameDayError) {
+      throw new Error(`Same-day reminder query failed: ${sameDayError.message}`);
+    }
+
+    results.sameDayReminderCandidates = sameDayAppointments?.length || 0;
+
+    for (const appt of sameDayAppointments || []) {
+      try {
+        const patient = appt.patients;
+
+        if (!patient?.email) {
+          results.errors.push(`Skipped same-day reminder for ${appt.id}: missing patient email`);
+          continue;
+        }
+
+        await sendSameDayReminderEmail({
+          to: patient.email,
+          firstName: patient.first_name || "Patient",
+          appointmentDate: appt.requested_date || "",
+          appointmentTime: appt.requested_time || "",
         });
 
-        results.push({ id: appt.id, ok: true });
+        const { error: updateError } = await supabase
+          .from("appointments")
+          .update({ same_day_reminder_sent_at: new Date().toISOString() })
+          .eq("id", appt.id);
+
+        if (updateError) {
+          results.errors.push(`Same-day reminder sent but DB update failed for ${appt.id}: ${updateError.message}`);
+          continue;
+        }
+
+        results.sameDayRemindersSent += 1;
       } catch (err: any) {
-        results.push({
-          id: appt.id,
-          ok: false,
-          error: err?.message || "Reminder send failed",
-        });
+        results.errors.push(`Same-day reminder failed for ${appt.id}: ${err.message || "Unknown error"}`);
       }
     }
 
     return NextResponse.json({
       ok: true,
-      targetDate,
-      total: appointments?.length || 0,
-      results,
+      ranAt: now.toISOString(),
+      ...results,
     });
   } catch (err: any) {
     return NextResponse.json(
-      { ok: false, error: err?.message || "Something went wrong" },
+      {
+        ok: false,
+        error: err.message || "Cron job failed",
+        ...results,
+      },
       { status: 500 }
     );
   }
