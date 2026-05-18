@@ -4,6 +4,21 @@ import { sendAppointmentReminderEmail, sendSameDayReminderEmail } from "@/lib/em
 
 export const dynamic = "force-dynamic";
 
+type ReminderPatient = {
+  email: string | null;
+  first_name: string | null;
+};
+
+type ReminderAppointment = {
+  id: string;
+  requested_date: string | null;
+  requested_time: string | null;
+  reminder_sent_at?: string | null;
+  same_day_reminder_sent_at?: string | null;
+  status: string | null;
+  patients: ReminderPatient | ReminderPatient[] | null;
+};
+
 function isAuthorized(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
@@ -16,13 +31,19 @@ function formatDateOnly(date: Date) {
   return date.toISOString().split("T")[0];
 }
 
+function getPatient(
+  patientRelation: ReminderPatient | ReminderPatient[] | null | undefined
+): ReminderPatient | null {
+  if (!patientRelation) return null;
+  return Array.isArray(patientRelation) ? patientRelation[0] || null : patientRelation;
+}
+
 export async function GET(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
   const supabase = await createClient();
-
   const now = new Date();
 
   const tomorrow = new Date(now);
@@ -51,11 +72,12 @@ export async function GET(request: NextRequest) {
       throw new Error(`Regular reminder query failed: ${regularError.message}`);
     }
 
-    results.regularReminderCandidates = regularAppointments?.length || 0;
+    const typedRegularAppointments = (regularAppointments || []) as ReminderAppointment[];
+    results.regularReminderCandidates = typedRegularAppointments.length;
 
-    for (const appt of regularAppointments || []) {
+    for (const appt of typedRegularAppointments) {
       try {
-        const patient = appt.patients;
+        const patient = getPatient(appt.patients);
 
         if (!patient?.email) {
           results.errors.push(`Skipped regular reminder for ${appt.id}: missing patient email`);
@@ -75,13 +97,17 @@ export async function GET(request: NextRequest) {
           .eq("id", appt.id);
 
         if (updateError) {
-          results.errors.push(`Reminder sent but DB update failed for ${appt.id}: ${updateError.message}`);
+          results.errors.push(
+            `Reminder sent but DB update failed for ${appt.id}: ${updateError.message}`
+          );
           continue;
         }
 
         results.regularRemindersSent += 1;
       } catch (err: any) {
-        results.errors.push(`Regular reminder failed for ${appt.id}: ${err.message || "Unknown error"}`);
+        results.errors.push(
+          `Regular reminder failed for ${appt.id}: ${err.message || "Unknown error"}`
+        );
       }
     }
 
@@ -96,11 +122,12 @@ export async function GET(request: NextRequest) {
       throw new Error(`Same-day reminder query failed: ${sameDayError.message}`);
     }
 
-    results.sameDayReminderCandidates = sameDayAppointments?.length || 0;
+    const typedSameDayAppointments = (sameDayAppointments || []) as ReminderAppointment[];
+    results.sameDayReminderCandidates = typedSameDayAppointments.length;
 
-    for (const appt of sameDayAppointments || []) {
+    for (const appt of typedSameDayAppointments) {
       try {
-        const patient = appt.patients;
+        const patient = getPatient(appt.patients);
 
         if (!patient?.email) {
           results.errors.push(`Skipped same-day reminder for ${appt.id}: missing patient email`);
@@ -120,13 +147,17 @@ export async function GET(request: NextRequest) {
           .eq("id", appt.id);
 
         if (updateError) {
-          results.errors.push(`Same-day reminder sent but DB update failed for ${appt.id}: ${updateError.message}`);
+          results.errors.push(
+            `Same-day reminder sent but DB update failed for ${appt.id}: ${updateError.message}`
+          );
           continue;
         }
 
         results.sameDayRemindersSent += 1;
       } catch (err: any) {
-        results.errors.push(`Same-day reminder failed for ${appt.id}: ${err.message || "Unknown error"}`);
+        results.errors.push(
+          `Same-day reminder failed for ${appt.id}: ${err.message || "Unknown error"}`
+        );
       }
     }
 
