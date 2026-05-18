@@ -85,10 +85,11 @@ export async function GET(request: NextRequest) {
         }
 
         await sendAppointmentReminderEmail({
-          to: patient.email,
-          firstName: patient.first_name || "Patient",
-          appointmentDate: appt.requested_date || "",
-          appointmentTime: appt.requested_time || "",
+          patientName: patient.first_name || "Patient",
+          patientEmail: patient.email,
+          service: "Mobile Phlebotomy Appointment",
+          date: appt.requested_date || "",
+          time: appt.requested_time || "",
         });
 
         const { error: updateError } = await supabase
@@ -135,10 +136,11 @@ export async function GET(request: NextRequest) {
         }
 
         await sendSameDayReminderEmail({
-          to: patient.email,
-          firstName: patient.first_name || "Patient",
-          appointmentDate: appt.requested_date || "",
-          appointmentTime: appt.requested_time || "",
+          patientName: patient.first_name || "Patient",
+          patientEmail: patient.email,
+          service: "Mobile Phlebotomy Appointment",
+          date: appt.requested_date || "",
+          time: appt.requested_time || "",
         });
 
         const { error: updateError } = await supabase
